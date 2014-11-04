@@ -60,20 +60,36 @@ def shellescape(args):
     return ' '.join(quote(arg) for arg in args)
 
 
-def colorize(cmd, *args):
+def colorize(cmd):
     from os import isatty
 
-    cmd += args
     if isatty(1):
         template = '\033[01;36m>\033[m \033[01;33m{0}\033[m'
     else:
         template = '> {0}'
 
+    return template.format(shellescape(cmd))
+
+
+def run(cmd):
     from subprocess import check_call
-    check_call(('echo', template.format(
-        shellescape(cmd)
-    )))
+    check_call(('echo', colorize(cmd)))
     check_call(cmd)
+
+
+def pip(args):
+    """Run pip, in-process."""
+    # NOTE: pip *must* be imported here, so that we get the venv's pip
+    import pip as pipmodule
+    import sys
+
+    # pip<1.6 needs its logging config reset on each invocation, or else we get duplicate outputs -.-
+    pipmodule.logger.consumers = []
+
+    sys.stdout.write(colorize(('pip',) + args))
+    sys.stdout.flush()
+
+    pipmodule.main(list(args))
 
 
 def exec_file(fname, lnames=None, gnames=None):
@@ -126,16 +142,16 @@ def clean_venv(venv_path, venv_args):
         # virtualenv --clear has two problems:
         #   it doesn't properly clear out the venv/bin, causing wacky errors
         #   it writes over (rather than replaces) the python binary, so there's an error if it's in use.
-        colorize(('rm', '-rf', venv_path))
+        run(('rm', '-rf', venv_path))
 
     virtualenv = ('virtualenv', venv_path)
-    colorize(virtualenv + venv_args)
+    run(virtualenv + venv_args)
 
     with active_virtualenv(venv_path):
         yield
 
     # Postprocess: Make our venv relocatable, since we do plan to relocate it, sometimes.
-    colorize(virtualenv, '--relocatable')
+    run(virtualenv + ('--relocatable',))
 
 
 def do_install(reqs):
@@ -152,33 +168,25 @@ def do_install(reqs):
         PIP_DOWNLOAD_CACHE=pip_download_cache,
     )
 
-    # We need python -m here so that the system-level pip1.4 knows we're talking about the venv.
-    pip = ('python', '-m', 'pip.runner')
-
     cache_opts = (
         '--download-cache=' + pip_download_cache,
         '--find-links=file://' + pip_download_cache,
     )
 
     # --use-wheel is somewhat redundant here, but it means we get an error if we have a bad version of pip/setuptools.
-    install = pip + ('install', '--ignore-installed', '--use-wheel') + cache_opts
-    wheel = pip + ('wheel',) + cache_opts
+    install = ('install', '--ignore-installed', '--use-wheel') + cache_opts
+    wheel = ('wheel',) + cache_opts
 
     # Bootstrap the install system; setuptools and pip are alreayd installed, just need wheel
-    colorize(install, 'wheel')
+    pip(install + ('wheel',))
 
     # Caching: Make sure everything we want is downloaded, cached, and has a wheel.
-    colorize(
-        wheel,
-        '--wheel-dir=' + pip_download_cache,
-        'wheel',
-        *requirements_as_options
-    )
+    pip(wheel + ('--wheel-dir=' + pip_download_cache, 'wheel') + requirements_as_options)
 
     # Install: Use our well-populated cache (only) to do the installations.
     # The --ignore-installed gives more-repeatable behavior in the face of --system-site-packages,
     #   and brings us closer to a --no-site-packages future
-    colorize(install, '--no-index', *requirements_as_options)
+    pip(install + ('--no-index',) + requirements_as_options)
 
     return 0
 
@@ -204,7 +212,7 @@ def mark_venv_invalid(venv_path, reqs):
         print("Waiting for all subprocesses to finish...", end=' ')
         wait_for_all_subprocesses()
         print("DONE")
-        colorize(('touch', venv_path, '--reference', reqs[0], '--date', '1 day ago'))
+        run(('touch', venv_path, '--reference', reqs[0], '--date', '1 day ago'))
         print()
 
 
