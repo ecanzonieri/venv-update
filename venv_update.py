@@ -87,9 +87,13 @@ def pip(args):
     pipmodule.logger.consumers = []
 
     sys.stdout.write(colorize(('pip',) + args))
+    sys.stdout.write('\n')
     sys.stdout.flush()
 
-    pipmodule.main(list(args))
+    result = pipmodule.main(list(args))
+    if result != 0:
+        # pip exited with failure, then we should too
+        exit(result)
 
 
 def exec_file(fname, lnames=None, gnames=None):
@@ -106,6 +110,10 @@ def activate(venv):
     activate_this = join(venv, 'bin', 'activate_this.py')
     exec_file(activate_this, dict(__file__=activate_this))
 
+    # fix up sys.executable as well
+    import sys
+    sys.executable = join(sys.prefix, 'bin', 'python')
+
 
 @contextmanager
 def active_virtualenv(venv_path):
@@ -115,6 +123,7 @@ def active_virtualenv(venv_path):
     """
     # TODO: unit test
     import sys
+    orig_executable = sys.executable
     orig_environ = environ.copy()
     orig_pythonpath = list(sys.path)
     orig_prefix = sys.prefix
@@ -132,6 +141,7 @@ def active_virtualenv(venv_path):
     sys.path[:] = orig_pythonpath
     environ.clear()
     environ.update(orig_environ)
+    sys.executable = orig_executable
 
 
 @contextmanager
