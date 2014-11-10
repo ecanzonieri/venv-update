@@ -34,7 +34,7 @@ def test_second_install_faster(tmpdir):
         requirements.write('''\
 simplejson
 pyyaml
-coverage
+# coverage  # causes bus error!?!  https://bitbucket.org/ned/coveragepy/issue/333/edge-case-coverage-for-installing-coverage
 pylint
 pytest
 ''')
