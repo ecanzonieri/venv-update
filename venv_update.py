@@ -231,19 +231,25 @@ def main():
     try:
         with clean_venv(venv_path, venv_args):
             exit_code = do_install(reqs)
+            print('Returned with: ', exit_code)
     except SystemExit as error:
         exit_code = error.code
+        print('Exitted with: ', exit_code)
     except CalledProcessError as error:
         exit_code = error.returncode
+        print('ProcessError: ', exit_code, error)
     except KeyboardInterrupt:
         exit_code = 1
+        print('Interrupt: 1')
     except Exception:
         mark_venv_invalid(venv_path, reqs)
+        print('Unexpected exception: 1')
         raise
 
     if exit_code != 0:
         mark_venv_invalid(venv_path, reqs)
 
+    print('Exit code: ', exit_code)
     return exit_code
 
 
