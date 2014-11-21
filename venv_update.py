@@ -102,6 +102,10 @@ def faster_pip_packagefinder():
     orig_packagefinder = vars(PackageFinder).copy()
 
     def find_requirement(self, req, upgrade):
+        if exactly_satisfied(req):
+            print('Requirement already up-to-date: %s' % req)
+            return None
+
         if any(op == '==' for op, ver in req.req.specs):
             # if the version is pinned-down by a ==, do an optimistic search
             # for a satisfactory package on the local filesystem.
@@ -192,6 +196,41 @@ def pip_parse_requirements(requirement_files):
     return required
 
 
+def is_absolute(requirement):
+    # TODO: unit-test
+    if not requirement:
+        # url-style requirement
+        return False
+
+    for qualifier, dummy_version in requirement.specs:
+        if qualifier == '==':
+            return True
+    return False
+
+
+def exactly_satisfied(pipreq):
+    if not is_absolute(pipreq.req):
+        return False
+
+    return pipreq.check_if_exists()
+
+
+def format_req(pipreq):
+    """un-parse a pip requirement back to commandline arguments"""
+    # TODO: unit-test
+    if pipreq.editable:
+        editable = ('-e',)
+    else:
+        editable = ()
+
+    if pipreq.url:
+        spec = (pipreq.url,)
+    else:
+        spec = (str(pipreq.req),)
+
+    return editable + spec
+
+
 def pip_install(args):
     """Run pip install, and return the set of packages installed.
     """
@@ -242,13 +281,13 @@ def trace_requirements(requirements):
 @contextmanager
 def venv(venv_path, venv_args):
     """Ensure we have a virtualenv."""
-    virtualenv = ('virtualenv', venv_path)
-    run(virtualenv + venv_args)
+    #virtualenv = ('virtualenv', venv_path)
+    #run(virtualenv + venv_args)
 
     yield
 
     # Postprocess: Make our venv relocatable, since we do plan to relocate it, sometimes.
-    run(virtualenv + ('--relocatable',))
+    #run(virtualenv + ('--relocatable',))
 
 
 def do_install(reqs):
@@ -256,6 +295,14 @@ def do_install(reqs):
 
     previously_installed = pip_get_installed()
     required = pip_parse_requirements(reqs)
+
+    # TODO: make wheels as part of the install
+    required = filter_exactly_satisfied(required)
+
+    for pkg, req in sorted(required.items()):
+        print(req.req)
+    return
+
     requirements_as_options = tuple(
         '--requirement={0}'.format(requirement) for requirement in reqs
     )
